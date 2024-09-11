@@ -1,0 +1,93 @@
+// Definição dos pinos dos sensores e motores
+#define SENSOR_ESQUERDO A0
+#define SENSOR_DIREITO A1
+#define MOTOR_ESQUERDO 3
+#define MOTOR_DIREITO 5
+
+// Variáveis para PID
+float Kp = 1.5;
+float Ki = 0.0;
+float Kd = 1.0;
+
+float erro = 0;
+float erro_anterior = 0;
+float integral = 0;
+float derivada = 0;
+float correcao = 0;
+
+// Variáveis para controle de interseções
+bool cruzamento_detectado = false;
+int tempo_perdido = 0;
+int limite_perda = 300; // Ajuste para o tempo máximo de "perda de linha"
+
+// Variáveis de controle de velocidade
+int velocidade_base = 150;
+int velocidade_esquerda = 0;
+int velocidade_direita = 0;
+
+// Função para leitura dos sensores
+int lerSensor(int pino) {
+  return analogRead(pino);  // Retorna valor do sensor (0 a 1023)
+}
+
+// Função de configuração
+void setup() {
+  pinMode(SENSOR_ESQUERDO, INPUT);
+  pinMode(SENSOR_DIREITO, INPUT);
+  pinMode(MOTOR_ESQUERDO, OUTPUT);
+  pinMode(MOTOR_DIREITO, OUTPUT);
+}
+
+// Função de loop principal
+void loop() {
+  // Leitura dos sensores
+  int valorSensorEsquerdo = lerSensor(SENSOR_ESQUERDO);
+  int valorSensorDireito = lerSensor(SENSOR_DIREITO);
+  
+  // Definir os limites de preto e branco para os sensores (ajustar conforme necessário)
+  bool sensorEsquerdoPreto = valorSensorEsquerdo < 500;  // Ajuste conforme sua faixa de detecção
+  bool sensorDireitoPreto = valorSensorDireito < 500;    // Ajuste conforme sua faixa de detecção
+
+  // Verificar se ambos os sensores perderam a linha (cruzamento ou curva brusca)
+  if (!sensorEsquerdoPreto && !sensorDireitoPreto) {
+    tempo_perdido++;
+    
+    if (tempo_perdido > limite_perda) {
+      // Tratamento de cruzamento: siga em frente por um breve período ou até reencontrar a linha
+      cruzamento_detectado = true;
+    }
+  } else {
+    // Resetar o contador de perda de linha quando pelo menos um sensor detectar a linha
+    tempo_perdido = 0;
+    cruzamento_detectado = false;
+  }
+
+  if (cruzamento_detectado) {
+    // Seguir reto temporariamente até o cruzamento ser ultrapassado
+    velocidade_esquerda = velocidade_base;
+    velocidade_direita = velocidade_base;
+  } else {
+    // Controle PID normal baseado na leitura dos sensores
+    erro = (sensorEsquerdoPreto ? -1 : 0) + (sensorDireitoPreto ? 1 : 0); // -1 para esquerda, 1 para direita, 0 para linha reta
+
+    integral += erro;
+    derivada = erro - erro_anterior;
+    correcao = Kp * erro + Ki * integral + Kd * derivada;
+
+    erro_anterior = erro;
+
+    // Ajustar velocidades dos motores
+    velocidade_esquerda = velocidade_base - correcao;
+    velocidade_direita = velocidade_base + correcao;
+  }
+
+  // Garantir que as velocidades fiquem dentro dos limites
+  velocidade_esquerda = constrain(velocidade_esquerda, 0, 255);
+  velocidade_direita = constrain(velocidade_direita, 0, 255);
+
+  // Escrever valores nos motores
+  analogWrite(MOTOR_ESQUERDO, velocidade_esquerda);
+  analogWrite(MOTOR_DIREITO, velocidade_direita);
+
+  delay(10);  // Pequeno atraso para estabilidade do loop
+}
